@@ -8,7 +8,18 @@ REQUIRED = ["hero", "about", "projects", "skills", "contact"]
 BANNED = ["lorem ipsum", "todo", "your name here", "example.com", "johndoe", "placeholder"]
 NAMED_COLOURS = ["gray","grey","red","blue","green","black","white","silver","navy","teal",
     "olive","lime","aqua","fuchsia","maroon","purple","yellow","orange","pink","brown","gold"]
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+def _find_chrome():
+    for p in (
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        "/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium",
+    ):
+        if os.path.exists(p):
+            return p
+    return p  # fall back to the macOS path so os.path.exists() below is False, not a crash
+CHROME = _find_chrome()
 
 for _f in ("profile.md", "index.html", "style.css"):
     if not os.path.exists(f"{D}/{_f}"):

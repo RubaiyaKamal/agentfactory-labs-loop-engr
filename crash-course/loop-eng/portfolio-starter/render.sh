@@ -17,9 +17,29 @@
 #     #hero to FOLD (the real viewport height) — reproducing the layout a visitor gets at
 #     that viewport, then capturing the entire scroll. This is what a browser automation
 #     protocol calls captureBeyondViewport; we are doing it by hand, with no npm.
-CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+for _c in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+          "/c/Program Files/Google/Chrome/Application/chrome.exe" \
+          "/c/Program Files (x86)/Google/Chrome/Application/chrome.exe" \
+          "$LOCALAPPDATA/Google/Chrome/Application/chrome.exe" \
+          "/usr/bin/google-chrome" "/usr/bin/chromium-browser" "/usr/bin/chromium"; do
+  if [ -f "$_c" ]; then CHROME="$_c"; break; fi
+done
 D="${1:-site}"
 ABS="$(cd "$D" && pwd)"
+# On Windows, bash's `pwd` reports an MSYS-style path (/d/foo/bar), which is not a path
+# Chrome-for-Windows can resolve inside a file:// URL — navigation fails silently (no
+# screenshot written, no error surfaced past the 2>/dev/null redirects). cygpath ships with
+# Git Bash and converts it to a real Windows path, which we then re-slash for the URL.
+if command -v cygpath >/dev/null 2>&1; then
+  WINABS="$(cygpath -w "$ABS" | tr '\\' '/')"
+  URLABS="/$WINABS"
+else
+  WINABS="$ABS"
+  URLABS="$ABS"
+fi
+# Chrome-for-Windows also silently drops a *relative* --screenshot path (writes nothing, no
+# error past 2>/dev/null) — same fix, applied to the output side, not just the source URL.
+OUTABS="$WINABS"
 FOLD=900          # the viewport height vh/svh units must resolve against
 MFOLD=844         # a phone's
 
@@ -35,7 +55,7 @@ shoot () { # $1=srcfile $2=w $3=h $4=out
 }
 
 # --- the fold: what a visitor actually opens, at a true viewport
-shoot "$ABS/index.html" 1280 $FOLD "$D/fold.png"
+shoot "$URLABS/index.html" 1280 $FOLD "$OUTABS/fold.png"
 
 # --- full page: hero pinned to the real fold so svh is honest, then capture everything
 python3 - "$ABS" "$FOLD" <<'PY'
@@ -47,9 +67,9 @@ probe = '<script>window.addEventListener("load",function(){document.title="H="+d
 open(f"{abs_}/_full.html","w").write(h.replace('</head>', pin+'</head>').replace('</body>', probe+'</body>'))
 PY
 H=$("$CHROME" --headless --disable-gpu --window-size=1280,$FOLD --virtual-time-budget=2000 \
-     --dump-dom "file://$ABS/_full.html" 2>/dev/null | grep -o 'H=[0-9]*' | head -1 | cut -d= -f2)
+     --dump-dom "file://$URLABS/_full.html" 2>/dev/null | grep -o 'H=[0-9]*' | head -1 | cut -d= -f2)
 H=${H:-2400}
-shoot "$ABS/_full.html" 1280 $H "$D/desktop.png"
+shoot "$URLABS/_full.html" 1280 $H "$OUTABS/desktop.png"
 rm -f "$ABS/_full.html"
 
 # --- phone: a true 390px viewport inside an iframe, hero pinned to a phone's fold
@@ -75,7 +95,7 @@ open(f"{abs_}/_probe.html", "w").write(
  'this.contentDocument.documentElement.scrollHeight);});</script>')
 PY2
 MH=$("$CHROME" --headless --disable-gpu --allow-file-access-from-files --force-prefers-reduced-motion \
-      --window-size=520,900 --virtual-time-budget=3000 --dump-dom "file://$ABS/_probe.html" 2>/dev/null \
+      --window-size=520,900 --virtual-time-budget=3000 --dump-dom "file://$URLABS/_probe.html" 2>/dev/null \
       | grep -o 'H=[0-9]*' | head -1 | cut -d= -f2)
 MH=${MH:-3000}
 python3 - "$ABS" "$MH" <<'PY2'
@@ -87,7 +107,7 @@ open(f"{abs_}/_mframe.html", "w").write(
  f'iframe{{width:390px;height:{mh}px;border:0;display:block}}</style>'
  '<iframe src="_m.html"></iframe>')
 PY2
-shoot "$ABS/_mframe.html" 400 "$MH" "$D/mobile.png"
+shoot "$URLABS/_mframe.html" 400 "$MH" "$OUTABS/mobile.png"
 rm -f "$ABS/_probe.html"
 rm -f "$ABS/_m.html" "$ABS/_mframe.html" "$ABS/shot.png"
 echo "rendered $D/fold.png (1280x$FOLD), $D/desktop.png (full ${H}px), $D/mobile.png (390x${MH}, true viewport)"
